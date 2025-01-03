@@ -1,0 +1,59 @@
+@import url("https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600&display=swap");
+
+body {
+  margin: 0;
+  line-height: normal;
+  width: 100%;
+  height: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: transparent;
+  font-family: var(--font-lexend);
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-lexend);
+}
+
+:root {
+  /* fonts */
+  --font-lexend: Lexend;
+
+  /* font sizes */
+  --font-size-base: 16px;
+  --font-size-sm: 14px;
+  --font-size-xs: 12px;
+  --font-size-xl: 20px;
+
+  /* Colors */
+  --color-whitesmoke-100: #ebebeb;
+  --color-black: #000;
+  --color-darkcyan-100: #198998;
+  --color-white: #fff;
+
+  /* Gaps */
+  --gap-xl: 20px;
+  --gap-xs: 12px;
+  --gap-8xs: 5px;
+
+  /* Paddings */
+  --padding-5xs: 8px;
+  --padding-xl: 20px;
+  --padding-base: 16px;
+  --padding-13xl: 32px;
+  --padding-11xs: 2px;
+  --padding-9xs: 4px;
+  --padding-10xs: 3px;
+
+  /* Border radiuses */
+  --br-base: 16px;
+  --br-8xs: 5px;
+  --br-5xl: 24px;
+  --br-9xs: 4px;
+  --br-10xs: 3px;
+}
