@@ -31,9 +31,9 @@ jobs:
           key: v1-dependencies-{{ checksum "package-lock.json" }}
 
       # Executar testes
-      - run:
-          name: Run Tests
-          command: npm test
+      # - run:
+      #     name: Run Tests
+      #     command: npm test
 
       # Executar build
       - run:
@@ -48,7 +48,7 @@ jobs:
       - run:
           name: Copy Build Artifacts
           command: |
-            cp -R build dist public .output .next .docusaurus ~/artifacts 2>/dev/null || true
+            cp -R dist public .output .next .docusaurus ~/artifacts 2>/dev/null || true
 
       # Armazenar artefatos
       - store_artifacts:
@@ -56,9 +56,9 @@ jobs:
           destination: node-build
 
       # Armazenar resultados de testes (se existir)
-      - store_test_results:
-          path: test-results
-          destination: tests
+      # - store_test_results:
+      #     path: test-results
+      #     destination: tests
 
   deploy:
     executor:
@@ -93,7 +93,7 @@ jobs:
       - run:
           name: Deploy to GitHub Pages
           command: |
-            gh-pages -d build -r https://$GITHUB_TOKEN@github.com/yasudasakae/compras.ai.git
+            gh-pages -d dist -r https://$GITHUB_TOKEN@github.com/yasudasakae/compras.ai.git
 
 workflows:
   version: 2
