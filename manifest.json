@@ -3,7 +3,7 @@
     "name": "Compras IA",
     "version": "1.0.5",
     "action": {
-        "default_title": "Abrir Compras IA"
+        "default_title": "Abrir Compras IAA"
     },
     "background": {
         "service_worker": "background.js",
