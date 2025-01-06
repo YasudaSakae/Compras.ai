@@ -1,0 +1,108 @@
+# .circleci/config.yml
+
+version: 2.1
+
+orbs:
+  node: circleci/node@5.0.0
+
+jobs:
+  build-test:
+    executor:
+      name: node/default
+    working_directory: ~/project/frontend-dev
+    steps:
+      - checkout:
+          path: ~/project
+
+      # Restaurar cache de dependências
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package-lock.json" }}
+            - v1-dependencies-
+
+      # Instalar dependências
+      - node/install-packages:
+          pkg-manager: npm
+
+      # Salvar cache de dependências
+      - save_cache:
+          paths:
+            - ~/project/frontend-dev/node_modules
+          key: v1-dependencies-{{ checksum "package-lock.json" }}
+
+      # Executar testes
+      - run:
+          name: Run Tests
+          command: npm test
+
+      # Executar build
+      - run:
+          name: Build Application
+          command: npm run build
+
+      # Preparar artefatos (opcional)
+      - run:
+          name: Create Artifacts Directory
+          command: mkdir -p ~/artifacts
+
+      - run:
+          name: Copy Build Artifacts
+          command: |
+            cp -R build dist public .output .next .docusaurus ~/artifacts 2>/dev/null || true
+
+      # Armazenar artefatos
+      - store_artifacts:
+          path: ~/artifacts
+          destination: node-build
+
+      # Armazenar resultados de testes (se existir)
+      - store_test_results:
+          path: test-results
+          destination: tests
+
+  deploy:
+    executor:
+      name: node/default
+    working_directory: ~/project/frontend-dev
+    steps:
+      - checkout:
+          path: ~/project
+
+      # Instalar dependências (necessário para gh-pages)
+      - node/install-packages:
+          pkg-manager: npm
+
+      # Executar build (caso não tenha sido feito no job anterior)
+      - run:
+          name: Build Application
+          command: npm run build
+
+      # Instalar o pacote gh-pages globalmente
+      - run:
+          name: Install gh-pages
+          command: npm install -g gh-pages
+
+      # Configurar Git para usar o token no deploy
+      - run:
+          name: Configure Git
+          command: |
+            git config --global user.email "sakaeyasuda2@gmail.com"
+            git config --global user.name "Sakae"
+
+      # Deploy para GitHub Pages
+      - run:
+          name: Deploy to GitHub Pages
+          command: |
+            gh-pages -d build -r https://$GITHUB_TOKEN@github.com/yasudasakae/compras.ai.git
+
+workflows:
+  version: 2
+  build_test_deploy:
+    jobs:
+      - build-test
+      - deploy:
+          requires:
+            - build-test
+          filters:
+            branches:
+              only: main  # Executa deploy apenas na branch main
