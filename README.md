@@ -15,3 +15,6 @@ Caused by: com.google.gson.stream.MalformedJsonException: Use JsonReader.setLeni
         at com.google.gson.stream.JsonReader.peek(JsonReader.java:425)
         at com.google.gson.JsonParser.parseReader(JsonParser.java:61)
         ... 8 more
+
+mvn package clean
+java -jar target/compras-crawler.jar
