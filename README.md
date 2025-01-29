@@ -18,3 +18,6 @@ Caused by: com.google.gson.stream.MalformedJsonException: Use JsonReader.setLeni
 
 mvn package clean
 java -jar target/compras-crawler.jar
+
+
+Get-ChildItem -Path "C:\caminho\da\pasta" -Filter "*.pdf" | Measure-Object | Select-Object -ExpandProperty Count
