@@ -76,6 +76,7 @@ def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, str, bool]:
     try:
         reader = PdfReader(pdf_path)
         if not reader.pages:
+            timer.add_time('erro_leitura', time.time() - start)
             return "", "", False
             
         # Extrai título (primeiras 10 palavras da primeira página)
@@ -101,6 +102,10 @@ def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, str, bool]:
             
         timer.add_time('extrair_texto', time.time() - start)
         return title.lower(), ' '.join(text_chunks).lower(), True
+    except Exception as e:
+        print(f"Erro na leitura de {pdf_path}: {str(e)}")
+        timer.add_time('erro_leitura', time.time() - start)
+        return "", "", False
     except Exception as e:
         print(f"Erro na leitura de {pdf_path}: {str(e)}")
         timer.add_time('erro_leitura', time.time() - start)
