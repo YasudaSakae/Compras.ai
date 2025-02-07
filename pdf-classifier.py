@@ -71,15 +71,23 @@ def create_folders(base_path: str, timer: Timer) -> None:
         os.makedirs(folder_path, exist_ok=True)
     timer.add_time('criar_pastas', time.time() - start)
 
-def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, bool]:
+def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, str, bool]:
     start = time.time()
     try:
         reader = PdfReader(pdf_path)
+        if not reader.pages:
+            return "", "", False
+            
+        # Extrai título (primeiras 10 palavras da primeira página)
+        first_page = reader.pages[0].extract_text()
+        title = ' '.join(first_page.split()[:10])
+        
+        # Extrai conteúdo normal
         text_chunks = []
         total_words = 0
         
         for page in reader.pages:
-            if total_words >= 150:  # Aumentado para melhor contexto
+            if total_words >= 150:
                 break
             
             page_text = page.extract_text()
@@ -92,27 +100,38 @@ def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, bool]:
             total_words += len(chunk)
             
         timer.add_time('extrair_texto', time.time() - start)
-        return ' '.join(text_chunks), True
+        return title.lower(), ' '.join(text_chunks).lower(), True
     except Exception as e:
         print(f"Erro na leitura de {pdf_path}: {str(e)}")
         timer.add_time('erro_leitura', time.time() - start)
         return "", False
 
-def classify_pdf(text: str, processor: TextProcessor, timer: Timer) -> str:
+def classify_pdf(title: str, content: str, processor: TextProcessor, timer: Timer) -> str:
     start = time.time()
-    if not text:
+    if not content and not title:
         timer.add_time('classificar', time.time() - start)
         return "Imagens"
     
-    cleaned_text = processor.clean_text(text)
-    matches = {}
+    # Limpa os textos
+    cleaned_title = processor.clean_text(title)
+    cleaned_content = processor.clean_text(content)
     
+    # Verifica primeiro no título
+    title_matches = {}
     for category, patterns in processor.keywords.items():
         for pattern in patterns:
-            matches[category] = len(re.findall(pattern, cleaned_text))
+            if re.search(pattern, cleaned_title):
+                timer.add_time('classificar', time.time() - start)
+                return category
     
-    # Encontra a categoria com mais matches
-    best_match = max(matches.items(), key=lambda x: x[1])
+    # Se não encontrou no título, procura no conteúdo
+    content_matches = {}
+    for category, patterns in processor.keywords.items():
+        for pattern in patterns:
+            content_matches[category] = len(re.findall(pattern, cleaned_content))
+    
+    # Encontra a categoria com mais matches no conteúdo
+    best_match = max(content_matches.items(), key=lambda x: x[1])
     timer.add_time('classificar', time.time() - start)
     
     return best_match[0] if best_match[1] > 0 else "Outros"
@@ -132,8 +151,8 @@ def process_pdfs(input_path: str) -> None:
         stats['processed'] += 1
         pdf_path = os.path.join(input_path, filename)
         
-        text, success = extract_text_from_pdf(pdf_path, timer)
-        category = "Não Lidos" if not success else classify_pdf(text, processor, timer)
+        title, content, success = extract_text_from_pdf(pdf_path, timer)
+        category = "Não Lidos" if not success else classify_pdf(title, content, processor, timer)
         
         dest_folder = os.path.join(input_path, category)
         try:
