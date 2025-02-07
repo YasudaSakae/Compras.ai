@@ -46,7 +46,7 @@ class TextProcessor:
                 'exclude': []
             },
             'Estudo Técnico Preliminar': {
-                'required': [r'\bestudo\s+t[ée]cnico\s+preliminar\b', r'\betp\b'],
+                'required': [r'\bestudo\s+t[ée]cnico\s+preliminar\b', r'\betp\b', r'\bestudos?\s+preliminares?\b'],
                 'context': [r'\bplanejamento\b', r'\bviabilidade\b'],
                 'exclude': []
             },
