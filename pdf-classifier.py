@@ -61,7 +61,7 @@ class TextProcessor:
                 'exclude': []
             },
             'FUNAI': {
-                'required': [r'\bfunai\b', r'\bfunda[çc][ãa]o\s+nacional\s+dos\s+povos\s+ind[íi]genas\b'],
+                'required': [r'\bfunai\b', r'\bfunda[çc][ãa]o\s+nacional\s+dos\s+povos\s+ind[íi]genas\b', r'\bfunda[çc][ãa]o\s+nacional\s+dos?\s+[íi]ndios?\b'],
                 'context': [r'\bind[íi]gena\b', r'\bind[íi]genas\b', r'\bpovos\b'],
                 'exclude': []
             }
