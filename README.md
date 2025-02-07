@@ -21,3 +21,14 @@ java -jar target/compras-crawler.jar
 
 
 Get-ChildItem -Path "C:\caminho\da\pasta" -Filter "*.pdf" | Measure-Object | Select-Object -ExpandProperty Count
+
+
+Erro na leitura de D:\ARQUIVOS\EDITAIS-BRUTO\PDF\00059311000126-193-2022.pdf: EOF marker not found
+Operação 'erro_leitura': 0.127s
+Traceback (most recent call last):
+  File "d:\SISTEMAS\SCRIPTS\pdf-classifier.py", line 186, in <module>
+    process_pdfs(input_path)
+  File "d:\SISTEMAS\SCRIPTS\pdf-classifier.py", line 154, in process_pdfs
+    title, content, success = extract_text_from_pdf(pdf_path, timer)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: not enough values to unpack (expected 3, got 2)
