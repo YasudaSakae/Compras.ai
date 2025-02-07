@@ -27,17 +27,44 @@ class Timer:
 
 class TextProcessor:
     def __init__(self):
+        # Palavras-chave principais com contexto
         self.keywords = {
-            'Contratação': [r'\b(contrata[çc][ãa]o|contrato)\b'],
-            'Credenciamento': [r'\bcredenciamento\b'],
-            'Dispensa': [r'\bdispensa\b'],
-            'Inexigibilidade': [r'\binexigibilidade\b'],
-            'Leilão': [r'\bleil[ãa]o\b'],
-            'Manifestação de Interesse': [r'\bmanifesta[çc][ãa]o\s+de\s+interesse\b'],
-            'Pregão': [r'\bpreg[ãa]o\b'],
-            'Termo de Referência': [r'\b(termo\s+de\s+refer[êe]ncia|tr)\b'],
-            'Estudo Técnico Preliminar': [r'\bestudo\s+t[ée]cnico\s+preliminar\b'],
-            'Matriz de Gerenciamento de Riscos': [r'\bmatriz\s+de\s+gerenciamento\s+de\s+riscos\b']
+            'Contratação': {
+                'required': [r'\b(contrata[çc][ãa]o|contrato)\b'],
+                'context': [r'\bservi[çc]os?\b', r'\bempresa\b', r'\bfornec\w+\b'],
+                'exclude': [r'\btermo\s+de\s+refer[êe]ncia\b', r'\bestudo\s+t[ée]cnico\b', 
+                          r'\bdocumento\s+de\s+formaliza[çc][ãa]o\b', r'\bmatriz\s+de\s+gerenciamento\b']
+            },
+            'Dispensa': {
+                'required': [r'\bdispensa\b'],
+                'context': [r'\blicita[çc][ãa]o\b', r'\bcontrata[çc][ãa]o\s+direta\b'],
+                'exclude': []
+            },
+            'Termo de Referência': {
+                'required': [r'\btermo\s+de\s+refer[êe]ncia\b', r'\btr\b'],
+                'context': [r'\bespecifica[çc][õo]es\b', r'\brequisitos\b'],
+                'exclude': []
+            },
+            'Estudo Técnico Preliminar': {
+                'required': [r'\bestudo\s+t[ée]cnico\s+preliminar\b', r'\betp\b'],
+                'context': [r'\bplanejamento\b', r'\bviabilidade\b'],
+                'exclude': []
+            },
+            'Matriz de Gerenciamento de Riscos': {
+                'required': [r'\bmatriz\s+de\s+gerenciamento\s+de\s+riscos\b', r'\bmatriz\s+de\s+riscos\b'],
+                'context': [r'\bimpacto\b', r'\bprobabilidade\b', r'\bconting[êe]ncia\b'],
+                'exclude': []
+            },
+            'DFD': {
+                'required': [r'\bdocumento\s+de\s+formaliza[çc][ãa]o\s+da\s+demanda\b', r'\bdfd\b'],
+                'context': [r'\bdemanda\b', r'\bformaliza[çc][ãa]o\b', r'\brequisitante\b'],
+                'exclude': []
+            },
+            'FUNAI': {
+                'required': [r'\bfunai\b', r'\bfunda[çc][ãa]o\s+nacional\s+dos\s+povos\s+ind[íi]genas\b'],
+                'context': [r'\bind[íi]gena\b', r'\bind[íi]genas\b', r'\bpovos\b'],
+                'exclude': []
+            }
         }
         
     def clean_text(self, text: str) -> str:
@@ -46,25 +73,33 @@ class TextProcessor:
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
     
-    def extract_meaningful_words(self, text: str) -> List[str]:
-        # Remove pontuação e números
-        text = re.sub(r'[^\w\s]', ' ', text)
-        text = re.sub(r'\d+', ' ', text)
-        # Divide em palavras e remove stopwords
-        words = [w for w in text.split() if len(w) > 2]
-        return words
-    
-    def get_text_signature(self, text: str) -> Counter:
-        words = self.extract_meaningful_words(text)
-        return Counter(words)
+    def calculate_score(self, text: str, category_patterns: Dict) -> float:
+        score = 0.0
+        
+        # Verifica padrões obrigatórios (peso 5.0)
+        required_matches = any(re.search(pattern, text) for pattern in category_patterns['required'])
+        if not required_matches:
+            return 0.0
+        score += 5.0
+        
+        # Verifica contexto (peso 1.0 cada)
+        context_matches = sum(1 for pattern in category_patterns['context'] 
+                            if re.search(pattern, text))
+        score += context_matches * 1.0
+        
+        # Verifica exclusões (peso -3.0 cada)
+        exclude_matches = sum(1 for pattern in category_patterns['exclude'] 
+                            if re.search(pattern, text))
+        score -= exclude_matches * 3.0
+        
+        return max(0.0, score)  # Não permite score negativo
 
 def create_folders(base_path: str, timer: Timer) -> None:
     start = time.time()
     folders = [
-        'Contratação', 'Credenciamento', 'Dispensa', 'Inexigibilidade',
-        'Leilão', 'Manifestação de Interesse', 'Pregão', 'Outros',
-        'Não Lidos', 'Imagens', 'Termo de Referência', 'Estudo Técnico Preliminar',
-        'Matriz de Gerenciamento de Riscos'
+        'Contratação', 'Dispensa', 'Outros', 'Não Lidos', 'Imagens',
+        'Termo de Referência', 'Estudo Técnico Preliminar',
+        'Matriz de Gerenciamento de Riscos', 'DFD', 'FUNAI'
     ]
     for folder in folders:
         folder_path = os.path.join(base_path, folder)
@@ -121,25 +156,26 @@ def classify_pdf(title: str, content: str, processor: TextProcessor, timer: Time
     cleaned_title = processor.clean_text(title)
     cleaned_content = processor.clean_text(content)
     
-    # Verifica primeiro no título
-    title_matches = {}
+    # Calcula scores para cada categoria
+    scores = {}
     for category, patterns in processor.keywords.items():
-        for pattern in patterns:
-            if re.search(pattern, cleaned_title):
-                timer.add_time('classificar', time.time() - start)
-                return category
+        # Score do título tem peso 2x
+        title_score = processor.calculate_score(cleaned_title, patterns) * 2
+        # Score do conteúdo tem peso 1x
+        content_score = processor.calculate_score(cleaned_content, patterns)
+        # Score final é a soma ponderada
+        scores[category] = title_score + content_score
     
-    # Se não encontrou no título, procura no conteúdo
-    content_matches = {}
-    for category, patterns in processor.keywords.items():
-        for pattern in patterns:
-            content_matches[category] = len(re.findall(pattern, cleaned_content))
+    # Encontra a categoria com maior score
+    best_match = max(scores.items(), key=lambda x: x[1])
     
-    # Encontra a categoria com mais matches no conteúdo
-    best_match = max(content_matches.items(), key=lambda x: x[1])
+    # Se o melhor score for muito baixo (< 5.0), classifica como Outros
+    if best_match[1] < 5.0:
+        timer.add_time('classificar', time.time() - start)
+        return "Outros"
+        
     timer.add_time('classificar', time.time() - start)
-    
-    return best_match[0] if best_match[1] > 0 else "Outros"
+    return best_match[0]
 
 def process_pdfs(input_path: str) -> None:
     timer = Timer()
