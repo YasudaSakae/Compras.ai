@@ -31,35 +31,34 @@ class TextProcessor:
         self.keywords = {
             'Contratação': {
                 'required': [
+                    r'\b(contrata[çc][ãa]o|contrato)\b',
                     r'\baviso\s+de\s+licita[çc][ãa]o\b',
                     r'\bedital\s+de\s+licita[çc][ãa]o\b',
                     r'\bprocesso\s+licitat[óo]rio\b',
-                    r'\bcontrata[çc][ãa]o\s+direta\b'
+                    r'\bcontrata[çc][ãa]o\s+direta\b',
+                    r'\bextrato\s+de\s+contrato\b',
+                    r'\bextrato\s+contratual\b'
                 ],
                 'context': [
                     r'\bempresa\b',
-                    r'\bvalor\s+estimado\b',
-                    r'\bvalor\s+total\b',
+                    r'\bvalor\b',
                     r'\bcnpj\b',
                     r'\bproposta\b',
                     r'\bservi[çc]os?\b',
                     r'\bcontratante\b',
                     r'\bcontratada\b',
-                    r'\blicita[çc][ãa]o\b'
+                    r'\blicita[çc][ãa]o\b',
+                    r'\bfornec\w+\b',
+                    r'\baquisição\b',
+                    r'\bpregão\b',
+                    r'\bconcorrência\b'
                 ],
                 'exclude': [
                     r'\btermo\s+de\s+refer[êe]ncia\b',
                     r'\bestudo\s+t[ée]cnico\b',
                     r'\bestudos?\s+preliminares?\b',
                     r'\bdocumento\s+de\s+formaliza[çc][ãa]o\b',
-                    r'\bmatriz\s+de\s+gerenciamento\b',
-                    r'\bparecer\b',
-                    r'\bdespacho\b',
-                    r'\bata\s+de\s+reuni[ãa]o\b',
-                    r'\bmem[óo]ria\s+de\s+reuni[ãa]o\b',
-                    r'\brelat[óo]rio\b',
-                    r'\banexo\b',
-                    r'\bformul[áa]rio\b'
+                    r'\bmatriz\s+de\s+gerenciamento\b'
                 ]
             },
             'Dispensa': {
@@ -212,7 +211,7 @@ def classify_pdf(title: str, content: str, processor: TextProcessor, timer: Time
         
         # Regras específicas para Contratação
         if category.lower() == 'contratação':
-            if required_matches < 2:
+            if required_matches < 1:  # Reduzido de 2 para 1
                 continue
         elif required_matches == 0:
             continue
@@ -224,7 +223,7 @@ def classify_pdf(title: str, content: str, processor: TextProcessor, timer: Time
                             if pattern.search(full_text))
         
         # Regras específicas para Contratação
-        if category.lower() == 'contratação' and context_matches < 3:
+        if category.lower() == 'contratação' and context_matches < 2:  # Reduzido de 3 para 2
             continue
             
         score += context_matches * 1.0
