@@ -6,6 +6,33 @@ from typing import Dict, List, Tuple, Set
 from unidecode import unidecode
 import re
 from collections import Counter
+import threading
+from functools import wraps
+
+class TimeoutException(Exception):
+    pass
+
+def timeout(seconds):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            result = [TimeoutException('Timed out')]
+            def worker():
+                try:
+                    result[0] = func(*args, **kwargs)
+                except Exception as e:
+                    result[0] = e
+            thread = threading.Thread(target=worker)
+            thread.daemon = True
+            thread.start()
+            thread.join(seconds)
+            if thread.is_alive():
+                return None
+            if isinstance(result[0], Exception):
+                raise result[0]
+            return result[0]
+        return wrapper
+    return decorator
 
 class Timer:
     def __init__(self):
@@ -27,7 +54,6 @@ class Timer:
 
 class TextProcessor:
     def __init__(self):
-        # Palavras-chave principais com contexto
         self.keywords = {
             'Contratação': {
                 'required': [
@@ -98,42 +124,6 @@ class TextProcessor:
         text = unidecode(text)
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
-    
-    def calculate_score(self, text: str, category_patterns: Dict) -> float:
-        score = 0.0
-        
-        # Verifica padrões obrigatórios (peso 5.0)
-        required_matches = sum(1 for pattern in category_patterns['required'] 
-                             if re.search(pattern, text))
-        
-        # Para a categoria Contratação, exige pelo menos 2 matches de required
-        if 'contratação' in text.lower() and required_matches < 2:
-            return 0.0
-            
-        if required_matches == 0:
-            return 0.0
-        score += required_matches * 5.0
-        
-        # Verifica contexto (peso 1.0 cada)
-        context_matches = sum(1 for pattern in category_patterns['context'] 
-                            if re.search(pattern, text))
-        
-        # Para Contratação, exige pelo menos 3 palavras de contexto
-        if 'contratação' in text.lower() and context_matches < 3:
-            return 0.0
-            
-        score += context_matches * 1.0
-        
-        # Verifica exclusões (peso -3.0 cada)
-        exclude_matches = sum(1 for pattern in category_patterns['exclude'] 
-                            if re.search(pattern, text))
-        score -= exclude_matches * 3.0
-        
-        # Penalidade extra para exclusões na categoria Contratação
-        if 'contratação' in text.lower():
-            score -= exclude_matches * 2.0  # Penalidade adicional
-            
-        return max(0.0, score)  # Não permite score negativo
 
 def create_folders(base_path: str, timer: Timer) -> None:
     start = time.time()
@@ -147,6 +137,7 @@ def create_folders(base_path: str, timer: Timer) -> None:
         os.makedirs(folder_path, exist_ok=True)
     timer.add_time('criar_pastas', time.time() - start)
 
+@timeout(10)
 def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, str, bool]:
     start = time.time()
     try:
@@ -155,11 +146,9 @@ def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, str, bool]:
             timer.add_time('erro_leitura', time.time() - start)
             return "", "", False
             
-        # Extrai título (primeiras 10 palavras da primeira página)
         first_page = reader.pages[0].extract_text()
         title = ' '.join(first_page.split()[:10])
         
-        # Extrai conteúdo normal
         text_chunks = []
         total_words = 0
         
@@ -182,58 +171,44 @@ def extract_text_from_pdf(pdf_path: str, timer: Timer) -> Tuple[str, str, bool]:
         print(f"Erro na leitura de {pdf_path}: {str(e)}")
         timer.add_time('erro_leitura', time.time() - start)
         return "", "", False
-    except Exception as e:
-        print(f"Erro na leitura de {pdf_path}: {str(e)}")
-        timer.add_time('erro_leitura', time.time() - start)
-        return "", False
 
+@timeout(10)
 def classify_pdf(title: str, content: str, processor: TextProcessor, timer: Timer, regex_cache: Dict) -> str:
     start = time.time()
     if not content and not title:
         timer.add_time('classificar', time.time() - start)
         return "Imagens"
     
-    # Limpa os textos
     cleaned_title = processor.clean_text(title)
     cleaned_content = processor.clean_text(content)
-    
-    # Combina título e conteúdo com pesos diferentes
     full_text = cleaned_title * 2 + " " + cleaned_content
     
-    # Calcula scores usando regex pré-compilados
     scores = {}
     for category, patterns in regex_cache.items():
         score = 0.0
-        
-        # Verifica padrões obrigatórios (peso 5.0)
         required_matches = sum(1 for pattern in patterns['required'] 
                              if pattern.search(full_text))
         
-        # Regras específicas para Contratação
         if category.lower() == 'contratação':
-            if required_matches < 1:  # Reduzido de 2 para 1
+            if required_matches < 1:
                 continue
         elif required_matches == 0:
             continue
             
         score += required_matches * 5.0
         
-        # Verifica contexto (peso 1.0 cada)
         context_matches = sum(1 for pattern in patterns['context'] 
                             if pattern.search(full_text))
         
-        # Regras específicas para Contratação
-        if category.lower() == 'contratação' and context_matches < 2:  # Reduzido de 3 para 2
+        if category.lower() == 'contratação' and context_matches < 2:
             continue
             
         score += context_matches * 1.0
         
-        # Verifica exclusões (peso -3.0 cada)
         exclude_matches = sum(1 for pattern in patterns['exclude'] 
                             if pattern.search(full_text))
         score -= exclude_matches * 3.0
         
-        # Penalidade extra para Contratação
         if category.lower() == 'contratação':
             score -= exclude_matches * 2.0
             
@@ -244,72 +219,10 @@ def classify_pdf(title: str, content: str, processor: TextProcessor, timer: Time
         timer.add_time('classificar', time.time() - start)
         return "Outros"
         
-    # Encontra a categoria com maior score
     best_match = max(scores.items(), key=lambda x: x[1])
     
     timer.add_time('classificar', time.time() - start)
     return best_match[0]
-
-def process_pdfs(input_path: str) -> None:
-    timer = Timer()
-    processor = TextProcessor()
-    total_start = time.time()
-    
-    create_folders(input_path, timer)
-    
-    # Pre-compilar expressões regulares
-    regex_cache = {}
-    for category, patterns in processor.keywords.items():
-        regex_cache[category] = {
-            'required': [re.compile(pattern) for pattern in patterns['required']],
-            'context': [re.compile(pattern) for pattern in patterns['context']],
-            'exclude': [re.compile(pattern) for pattern in patterns['exclude']]
-        }
-    
-    stats = {'processed': 0, 'moved': {}, 'errors': 0}
-    
-    # Processar arquivos em lotes para melhor performance
-    batch_size = 50
-    pdf_files = [f for f in os.listdir(input_path) if f.lower().endswith('.pdf')]
-    
-    for i in range(0, len(pdf_files), batch_size):
-        batch = pdf_files[i:i + batch_size]
-        
-        for filename in batch:
-            try:
-                pdf_path = os.path.join(input_path, filename)
-                stats['processed'] += 1
-                
-                # Adiciona verificação de arquivo corrompido
-                if os.path.getsize(pdf_path) < 100:  # arquivos muito pequenos provavelmente estão corrompidos
-                    print(f"Arquivo muito pequeno (possivelmente corrompido): {filename}")
-                    category = "Não Lidos"
-                else:
-                    title, content, success = extract_text_from_pdf(pdf_path, timer)
-                    category = "Não Lidos" if not success else classify_pdf(title, content, processor, timer, regex_cache)
-                
-                dest_folder = os.path.join(input_path, category)
-                try:
-                    start = time.time()
-                    shutil.move(pdf_path, os.path.join(dest_folder, filename))
-                    timer.add_time('mover_arquivo', time.time() - start)
-                    stats['moved'][category] = stats['moved'].get(category, 0) + 1
-                    print(f"Processado ({stats['processed']}/{len(pdf_files)}): {filename} → {category}")
-                except Exception as e:
-                    print(f"Erro ao mover {filename}: {str(e)}")
-                    stats['errors'] += 1
-                    
-            except Exception as e:
-                print(f"Erro ao processar {filename}: {str(e)}")
-                stats['errors'] += 1
-                continue
-        
-        # Limpa a memória periodicamente
-        if i % (batch_size * 5) == 0:
-            import gc
-            gc.collect()
-    
-    print_statistics(timer, stats, time.time() - total_start)
 
 def print_statistics(timer: Timer, stats: Dict, total_time: float) -> None:
     print("\nEstatísticas de Tempo (segundos):")
@@ -323,8 +236,81 @@ def print_statistics(timer: Timer, stats: Dict, total_time: float) -> None:
         print(f"Total de arquivos: {stats['processed']}")
         print(f"Tempo médio/arquivo: {total_time/stats['processed']:.3f}s")
         print("\nDistribuição por categoria:")
+        total_files = sum(stats['moved'].values())
         for category, count in stats['moved'].items():
-            print(f"{category}: {count}")
+            percentage = (count / total_files) * 100
+            print(f"{category}: {count} ({percentage:.1f}%)")
+        
+        if stats['errors'] > 0:
+            error_percentage = (stats['errors'] / stats['processed']) * 100
+            print(f"\nErros: {stats['errors']} ({error_percentage:.1f}%)")
+
+def process_pdfs(input_path: str) -> None:
+    timer = Timer()
+    processor = TextProcessor()
+    total_start = time.time()
+    
+    create_folders(input_path, timer)
+    
+    regex_cache = {}
+    for category, patterns in processor.keywords.items():
+        regex_cache[category] = {
+            'required': [re.compile(pattern) for pattern in patterns['required']],
+            'context': [re.compile(pattern) for pattern in patterns['context']],
+            'exclude': [re.compile(pattern) for pattern in patterns['exclude']]
+        }
+    
+    stats = {'processed': 0, 'moved': {}, 'errors': 0}
+    batch_size = 50
+    pdf_files = [f for f in os.listdir(input_path) if f.lower().endswith('.pdf')]
+    
+    for i in range(0, len(pdf_files), batch_size):
+        batch = pdf_files[i:i + batch_size]
+        
+        for filename in batch:
+            try:
+                pdf_path = os.path.join(input_path, filename)
+                stats['processed'] += 1
+                
+                if os.path.getsize(pdf_path) < 100:
+                    print(f"Arquivo muito pequeno (possivelmente corrompido): {filename}")
+                    category = "Não Lidos"
+                else:
+                    result = extract_text_from_pdf(pdf_path, timer)
+                    if result is None:  # Timeout occurred
+                        category = "Não Lidos"
+                    else:
+                        title, content, success = result
+                        if not success:
+                            category = "Não Lidos"
+                        else:
+                            classification_result = classify_pdf(title, content, processor, timer, regex_cache)
+                            category = "Não Lidos" if classification_result is None else classification_result
+                
+                dest_folder = os.path.join(input_path, category)
+                try:
+                    start = time.time()
+                    shutil.move(pdf_path, os.path.join(dest_folder, filename))
+                    timer.add_time('mover_arquivo', time.time() - start)
+                    stats['moved'][category] = stats['moved'].get(category, 0) + 1
+                    
+                    progress_percent = (stats['processed'] / len(pdf_files)) * 100
+                    print(f"Processado ({stats['processed']}/{len(pdf_files)} - {progress_percent:.1f}%): {filename} → {category}")
+                    
+                except Exception as e:
+                    print(f"Erro ao mover {filename}: {str(e)}")
+                    stats['errors'] += 1
+                    
+            except Exception as e:
+                print(f"Erro ao processar {filename}: {str(e)}")
+                stats['errors'] += 1
+                continue
+        
+        if i % (batch_size * 5) == 0:
+            import gc
+            gc.collect()
+    
+    print_statistics(timer, stats, time.time() - total_start)
 
 if __name__ == "__main__":
     input_path = input("Caminho da pasta com PDFs: ").strip()
