@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PyPDF2 import PdfReader
+from pdf2image import convert_from_path
+import pytesseract
 import os
 import requests
 import logging
@@ -54,12 +56,10 @@ class PDFAnalyzer:
         config_frame.grid(row=0, column=0, sticky='ew', pady=5)
         config_frame.columnconfigure(1, weight=1)
         
-        # API Key
         ttk.Label(config_frame, text="API Key:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
         self.api_key_entry = ttk.Entry(config_frame, width=50)
         self.api_key_entry.grid(row=0, column=1, sticky='ew', padx=5, pady=5)
         
-        # Configurar modelo
         ttk.Label(config_frame, text="Modelo:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
         self.model_entry = ttk.Entry(config_frame, width=50)
         self.model_entry.grid(row=1, column=1, sticky='ew', padx=5, pady=5)
@@ -123,6 +123,30 @@ class PDFAnalyzer:
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao conectar com Gemini API: {str(e)}")
             return False
+        
+    def extract_text_from_pdf(self, pdf_file):
+        """Extrai texto do PDF incluindo OCR para imagens."""
+        try:
+            # Extração normal de texto
+            reader = PdfReader(pdf_file)
+            text_content = []
+            
+            # Primeiro tenta extrair texto normalmente
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    text_content.append(text)
+                else:
+                    # Se não houver texto, converte a página para imagem e usa OCR
+                    images = convert_from_path(pdf_file)
+                    for image in images:
+                        text = pytesseract.image_to_string(image, lang='por')
+                        text_content.append(text)
+            
+            return "\n".join(text_content)
+        except Exception as e:
+            self.logger.error(f"Erro ao extrair texto do PDF: {str(e)}")
+            raise
 
     def split_text_into_chunks(self, text, chunk_size=30000):
         """Divide o texto em chunks respeitando o limite do Gemini."""
@@ -151,83 +175,105 @@ class PDFAnalyzer:
             model = genai.GenerativeModel('gemini-pro')
             
             if not is_complementary:
-                prompt = f"""Analise detalhadamente este documento que parece ser um contrato ou termo administrativo. 
-                Por favor, forneça uma análise estruturada e abrangente incluindo:
+                prompt = f"""Analise minuciosamente este documento, que pode ser um contrato ou termo administrativo. 
+            Forneça uma análise estruturada e detalhada, garantindo que todos os elementos críticos para a contratação pública 
+            estejam devidamente identificados. 
 
-                1. IDENTIFICAÇÃO DO DOCUMENTO
-                - Tipo de documento
-                - Número do contrato/processo
-                - Data do documento
-                - Sistemas/referências mencionados
+            **1. IDENTIFICAÇÃO DO DOCUMENTO**
+            - Tipo exato do documento (examine cabeçalho, título e conteúdo)
+            - Número do contrato/processo (inclua TODAS as referências)
+            - Datas relevantes (assinatura, vigência, publicação, prorrogação)
+            - Sistemas e referências normativas mencionadas (exemplo: PNCP, SICAF)
+            - Local de emissão do documento
 
-                2. PARTES ENVOLVIDAS
-                - Detalhes completos do contratante
-                - Detalhes completos do contratado
-                - Representantes legais e suas qualificações
-                - Testemunhas e suas qualificações
+            **2. PARTES ENVOLVIDAS**
+            - **Contratante:**
+                * Nome completo
+                * CNPJ (XX.XXX.XXX/XXXX-XX)
+                * Endereço completo
+                * Representante(s) legal(is) com qualificação (nome, CPF e cargo)
+            - **Contratado:**
+                * Nome completo
+                * CNPJ (XX.XXX.XXX/XXXX-XX)
+                * Endereço completo
+                * Representante(s) legal(is) com qualificação (nome, CPF e cargo)
 
-                3. OBJETO E ESCOPO
-                - Descrição detalhada do objeto
-                - Especificações técnicas mencionadas
-                - Requisitos especiais
-                - Entregáveis esperados
+            **3. OBJETO E ESCOPO**
+            - Descrição detalhada do objeto:
+                * Finalidade e objetivos específicos
+                * Quantidades e unidades
+                * Especificações técnicas e requisitos operacionais
+                * Características funcionais
+            - Itens de produtos/serviços (listar com detalhamento técnico)
+            - Padrões de qualidade exigidos
 
-                4. ASPECTOS FINANCEIROS
-                - Valor total do contrato
-                - Forma de pagamento
-                - Dotação orçamentária
-                - Condições financeiras especiais
+            **4. ASPECTOS FINANCEIROS**
+            - Valor total do contrato
+            - Valores por item e parcelas de pagamento
+            - Códigos CATMAT/CATSER (se aplicável)
+            - Fonte de recursos e dotação orçamentária completa
+            - Reajustes, correções e condições financeiras específicas
 
-                5. PRAZOS E CRONOGRAMA
-                - Prazo de vigência
-                - Datas importantes
-                - Possibilidades de prorrogação
-                - Cronograma de entrega/execução
+            **5. PRAZOS E CRONOGRAMA**
+            - Data de assinatura e vigência do contrato
+            - Cronograma de execução detalhado
+            - Marcos e prazos relevantes (entrega, fiscalização, prestação de contas)
+            - Condições para prorrogação e suas justificativas
 
-                6. OBRIGAÇÕES E RESPONSABILIDADES
-                - Obrigações detalhadas do contratante
-                - Obrigações detalhadas do contratado
-                - Responsabilidades específicas
-                - Garantias exigidas
+            **6. OBRIGAÇÕES E RESPONSABILIDADES**
+            - Responsabilidades do contratante
+            - Responsabilidades do contratado
+            - Garantias exigidas e penalidades aplicáveis
+            - Exigências trabalhistas, previdenciárias e fiscais
+            - Regras de fiscalização e controle da execução
 
-                7. ASPECTOS LEGAIS
-                - Base legal citada
-                - Sanções e penalidades
-                - Condições de rescisão
-                - Foro e jurisdição
+            **7. ASPECTOS LEGAIS**
+            - Base legal citada (exemplo: Lei 14.133/2021)
+            - Sanções e penalidades (multas, rescisões, impedimentos)
+            - Cláusulas de rescisão e motivos aceitáveis
+            - Foro e jurisdição competente
 
-                8. ASPECTOS TÉCNICOS E OPERACIONAIS
-                - Especificações técnicas
-                - Requisitos de qualidade
-                - Procedimentos operacionais
-                - Condições de execução
+            **8. ALTERAÇÕES CONTRATUAIS**
+            - Condições e limites para aditivos e apostilamentos
+            - Acréscimos ou supressões permitidos (% máximo permitido)
+            - Procedimentos para reequilíbrio econômico-financeiro
 
-                9. VALIDAÇÃO E ASSINATURAS
-                - Detalhes das assinaturas
-                - Processo de validação
-                - Certificações mencionadas
-                - Códigos de verificação
+            **9. ASPECTOS TÉCNICOS E OPERACIONAIS**
+            - Especificações detalhadas do objeto contratado
+            - Procedimentos operacionais e de entrega
+            - Exigências ambientais e critérios de sustentabilidade (se aplicável)
+            - Condições para recebimento e aceite
 
-                10. OBSERVAÇÕES IMPORTANTES
-                - Pontos críticos identificados
-                - Requisitos especiais
-                - Informações adicionais relevantes
-                - Recomendações de atenção
+            **10. VALIDAÇÃO E ASSINATURAS**
+            - Identificação das assinaturas do documento (nomes e cargos)
+            - Procedimentos de validação e autenticação
+            - Certificações exigidas (se houver)
+            - Códigos de verificação/documentação de controle
 
-                Texto para análise:
-                {text}
-                
-                Por favor, apresente a análise de forma clara e organizada, destacando informações críticas e usando formatação para melhor legibilidade. Se alguma das categorias acima não estiver presente no documento, você pode omiti-la."""
+            **11. OBSERVAÇÕES IMPORTANTES**
+            - Pontos críticos identificados
+            - Requisitos especiais ou atípicos
+            - Recomendações para análise e atenção
+
+            **IMPORTANTE:** 
+            1. Leia **todas** as seções do documento, incluindo cabeçalhos, rodapés e anexos, para encontrar as informações mencionadas.
+            2. Se alguma das categorias acima não estiver presente, omita a seção correspondente na resposta.
+            3. Organize a resposta de forma clara e bem estruturada, facilitando a identificação das informações essenciais.
+
+            **Texto para análise:**
+            {text}
+            """
             else:
-                prompt = f"""Analise este trecho adicional do documento e forneça apenas informações complementares 
-                que não foram mencionadas na análise anterior. Foque em:
-                
-                1. Novos detalhes técnicos
-                2. Informações complementares
-                3. Especificações adicionais
-                4. Outros pontos relevantes não mencionados anteriormente
-                
-                Texto adicional:
+                prompt = f"""Analise este trecho adicional do documento e forneça **somente informações complementares** 
+                que não foram mencionadas na análise anterior. Foque nos seguintes aspectos:
+
+                1. **Novos detalhes técnicos**
+                2. **Informações financeiras adicionais**
+                3. **Especificações operacionais complementares**
+                4. **Alterações contratuais relevantes**
+                5. **Outros pontos críticos não abordados anteriormente**
+
+                **Texto adicional para análise:**
                 {text}
                 """
             
@@ -257,10 +303,10 @@ class PDFAnalyzer:
                 try:
                     self.logger.info(f"Processando: {pdf_file}")
                     
-                    reader = PdfReader(pdf_file)
-                    text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
+                    # Usar nova função de extração com OCR
+                    text = self.extract_text_from_pdf(pdf_file)
 
-                    # Primeiro, vamos fazer uma análise geral do documento completo
+                    # Primeiro, vamos fazer uma análise geral do documento
                     self.logger.info("Realizando análise geral do documento")
                     full_analysis = self.analyze_with_gemini(text[:30000], is_complementary=False)
                     
@@ -268,7 +314,7 @@ class PDFAnalyzer:
                     self.result_text.insert(tk.END, "=== ANÁLISE GERAL ===\n")
                     self.result_text.insert(tk.END, full_analysis + "\n")
                     
-                    # Se o documento for maior que 30k, vamos fazer análises complementares
+                    # Se o documento for maior que 30k, fazer análises complementares
                     if len(text) > 30000:
                         chunks = self.split_text_into_chunks(text[30000:], 30000)
                         self.logger.info(f"Realizando análise detalhada de {len(chunks)} partes adicionais")
