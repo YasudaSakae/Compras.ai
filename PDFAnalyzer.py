@@ -344,3 +344,5 @@ class PDFAnalyzer:
 if __name__ == "__main__":
     app = PDFAnalyzer()
     app.run()
+
+#AIzaSyAykyWUpxP0KUh_JhLtYMKl0gXq1IzzWBY
